@@ -1,152 +1,160 @@
-
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import './index.css';
 
-const initialCourseData = [
-  { hole: 1, par: 4, si: 13 },
-  { hole: 2, par: 3, si: 17 },
-  { hole: 3, par: 4, si: 3 },
-  { hole: 4, par: 5, si: 7 },
-  { hole: 5, par: 4, si: 11 },
-  { hole: 6, par: 4, si: 1 },
-  { hole: 7, par: 3, si: 15 },
-  { hole: 8, par: 5, si: 9 },
-  { hole: 9, par: 4, si: 5 },
-  { hole: 10, par: 4, si: 14 },
-  { hole: 11, par: 4, si: 10 },
-  { hole: 12, par: 3, si: 18 },
-  { hole: 13, par: 4, si: 6 },
-  { hole: 14, par: 4, si: 12 },
-  { hole: 15, par: 5, si: 8 },
-  { hole: 16, par: 3, si: 16 },
-  { hole: 17, par: 5, si: 2 },
-  { hole: 18, par: 4, si: 4 },
-];
-
-export default function App() {
-  const [playerRed, setPlayerRed] = useState('Team Red');
-  const [playerBlue, setPlayerBlue] = useState('Team Blue');
+function App() {
+  const [courseName, setCourseName] = useState("Balmore GC");
+  const [holes, setHoles] = useState(Array(18).fill({ par: '', si: '' }));
+  const [teamRed, setTeamRed] = useState("Team Red");
+  const [teamBlue, setTeamBlue] = useState("Team Blue");
   const [hcpRed, setHcpRed] = useState(12);
   const [hcpBlue, setHcpBlue] = useState(10);
-  const [scores, setScores] = useState(initialCourseData.map(() => ({ red: '', blue: '' })));
-  const [matchStatus, setMatchStatus] = useState('All Square');
+  const [scoresRed, setScoresRed] = useState(Array(18).fill(''));
+  const [scoresBlue, setScoresBlue] = useState(Array(18).fill(''));
+  const [results, setResults] = useState(Array(18).fill('-'));
+  const [matchStatus, setMatchStatus] = useState("All Square");
 
-  const diff = Math.abs(hcpRed - hcpBlue);
-  const redGivesShots = hcpRed > hcpBlue;
-  const shotsGiven = initialCourseData
-    .sort((a, b) => a.si - b.si)
-    .slice(0, diff)
-    .map(d => d.hole);
-
-  const handleScoreChange = (i, team, value) => {
-    const newScores = [...scores];
-    newScores[i][team] = value;
-    setScores(newScores);
-  };
-
-  const calculateResults = () => {
-    let redUp = 0;
-    let blueUp = 0;
-    const results = [];
-
-    for (let i = 0; i < scores.length; i++) {
-      const red = parseInt(scores[i].red);
-      const blue = parseInt(scores[i].blue);
-      const giveShot = shotsGiven.includes(initialCourseData[i].hole);
-
-      let r = red, b = blue;
-      if (giveShot) {
-        if (redGivesShots) {
-          b -= 1;
-        } else {
-          r -= 1;
+  // Fetch course data
+  useEffect(() => {
+    const fetchCourse = async () => {
+      try {
+        const res = await fetch(`/api/coursefetcher?courseName=${encodeURIComponent(courseName)}`);
+        const data = await res.json();
+        if (data.holes) {
+          setHoles(data.holes);
         }
+      } catch (err) {
+        console.error("Error fetching course:", err);
       }
+    };
+    fetchCourse();
+  }, [courseName]);
 
-      if (!isNaN(r) && !isNaN(b)) {
-        if (r < b) redUp++;
-        else if (b < r) blueUp++;
+  // Compute shots given
+  const shotsGiven = Math.abs(hcpRed - hcpBlue);
+  const redGivesShots = hcpRed > hcpBlue;
+  const shotHoles = holes
+    .slice()
+    .sort((a, b) => a.si - b.si)
+    .slice(0, shotsGiven)
+    .map(h => h.hole);
 
-        if (redUp > blueUp + (18 - i - 1)) {
-          setMatchStatus(`${playerRed} wins ${redUp - blueUp}&${18 - i - (redUp - blueUp)}`);
-          break;
-        } else if (blueUp > redUp + (18 - i - 1)) {
-          setMatchStatus(`${playerBlue} wins ${blueUp - redUp}&${18 - i - (blueUp - redUp)}`);
-          break;
-        } else if (i === 17) {
-          if (redUp > blueUp) setMatchStatus(`${playerRed} wins 1up`);
-          else if (blueUp > redUp) setMatchStatus(`${playerBlue} wins 1up`);
-          else setMatchStatus('All Square');
-        }
+  const getAdjustedScore = (team, i) => {
+    let score = team === 'red' ? parseInt(scoresRed[i]) : parseInt(scoresBlue[i]);
+    if (shotHoles.includes(i + 1)) {
+      if ((team === 'red' && redGivesShots) || (team === 'blue' && !redGivesShots)) {
+        score -= 1;
       }
     }
+    return score;
+  };
+
+  const updateScore = (team, i, val) => {
+    const updated = team === 'red' ? [...scoresRed] : [...scoresBlue];
+    updated[i] = val;
+    if (team === 'red') setScoresRed(updated);
+    else setScoresBlue(updated);
   };
 
   useEffect(() => {
-    calculateResults();
-  }, [scores, hcpRed, hcpBlue]);
+    const newResults = [];
+    let redWins = 0;
+    let blueWins = 0;
+
+    for (let i = 0; i < 18; i++) {
+      const r = getAdjustedScore('red', i);
+      const b = getAdjustedScore('blue', i);
+
+      if (!isNaN(r) && !isNaN(b)) {
+        if (r < b) {
+          newResults[i] = teamRed;
+          redWins++;
+        } else if (b < r) {
+          newResults[i] = teamBlue;
+          blueWins++;
+        } else {
+          newResults[i] = "Half";
+        }
+      } else {
+        newResults[i] = '-';
+      }
+
+      if (Math.abs(redWins - blueWins) > (18 - i - 1)) {
+        break; // Match over
+      }
+    }
+
+    setResults(newResults);
+
+    const lead = redWins - blueWins;
+    if (lead === 0) {
+      setMatchStatus("All Square");
+    } else if (lead > 0) {
+      setMatchStatus(`${lead} Up ${teamRed}`);
+    } else {
+      setMatchStatus(`${-lead} Up ${teamBlue}`);
+    }
+
+  }, [scoresRed, scoresBlue, holes]);
 
   return (
-    <div style={{ padding: '20px' }}>
+    <div className="app">
       <h1>Golf Matchplay Tracker</h1>
-      <h4>Balmore GC – Gents White</h4>
+      <p><strong>{courseName}</strong></p>
 
-      <div style={{ marginBottom: '1rem' }}>
-        <label>🔴 Team Red: <input value={playerRed} onChange={e => setPlayerRed(e.target.value)} /></label>
-        <label style={{ marginLeft: '10px' }}>HCP Index: <input type="number" value={hcpRed} onChange={e => setHcpRed(+e.target.value)} /></label>
-        <br />
-        <label>🔵 Team Blue: <input value={playerBlue} onChange={e => setPlayerBlue(e.target.value)} /></label>
-        <label style={{ marginLeft: '10px' }}>HCP Index: <input type="number" value={hcpBlue} onChange={e => setHcpBlue(+e.target.value)} /></label>
+      <div>
+        <label>Course: </label>
+        <input value={courseName} onChange={e => setCourseName(e.target.value)} />
       </div>
 
-      <table border="1" cellPadding="6">
+      <div style={{ marginTop: '10px' }}>
+        <label>Team Red: </label>
+        <input value={teamRed} onChange={e => setTeamRed(e.target.value)} />
+        HCP Index: <input type="number" value={hcpRed} onChange={e => setHcpRed(Number(e.target.value))} />
+        <br />
+        <label>Team Blue: </label>
+        <input value={teamBlue} onChange={e => setTeamBlue(e.target.value)} />
+        HCP Index: <input type="number" value={hcpBlue} onChange={e => setHcpBlue(Number(e.target.value))} />
+      </div>
+
+      <table>
         <thead>
           <tr>
             <th>Hole</th><th>Par</th><th>SI</th>
-            <th style={{ color: 'red' }}>{playerRed}</th>
-            <th style={{ color: 'blue' }}>{playerBlue}</th>
+            <th style={{ color: 'red' }}>{teamRed}</th>
+            <th style={{ color: 'blue' }}>{teamBlue}</th>
             <th>Result</th>
           </tr>
         </thead>
         <tbody>
-          {initialCourseData.map((h, i) => {
-            const red = parseInt(scores[i].red);
-            const blue = parseInt(scores[i].blue);
-            const giveShot = shotsGiven.includes(h.hole);
-            let r = red, b = blue;
-            if (giveShot) {
-              if (redGivesShots) b -= 1;
-              else r -= 1;
-            }
-
-            let result = '';
-            if (!isNaN(r) && !isNaN(b)) {
-              if (r < b) result = playerRed;
-              else if (b < r) result = playerBlue;
-              else result = 'Half';
-            }
-
-            return (
-              <tr key={h.hole}>
-                <td>{h.hole}</td>
-                <td>{h.par}</td>
-                <td>{h.si}</td>
-                <td>
-                  <input value={scores[i].red} onChange={e => handleScoreChange(i, 'red', e.target.value)} style={{ width: '40px' }} />
-                  {redGivesShots === false && giveShot ? <span style={{ color: 'red' }}> (-1)</span> : ''}
-                </td>
-                <td>
-                  <input value={scores[i].blue} onChange={e => handleScoreChange(i, 'blue', e.target.value)} style={{ width: '40px' }} />
-                  {redGivesShots === true && giveShot ? <span style={{ color: 'blue' }}> (-1)</span> : ''}
-                </td>
-                <td>{result}</td>
-              </tr>
-            );
-          })}
+          {holes.map((hole, i) => (
+            <tr key={i}>
+              <td>{i + 1}</td>
+              <td>{hole.par}</td>
+              <td>{hole.si}</td>
+              <td>
+                <input
+                  value={scoresRed[i]}
+                  onChange={e => updateScore('red', i, e.target.value)}
+                  style={{ width: '40px' }}
+                />
+              </td>
+              <td>
+                <input
+                  value={scoresBlue[i]}
+                  onChange={e => updateScore('blue', i, e.target.value)}
+                  style={{ width: '40px' }}
+                />
+              </td>
+              <td>{results[i]}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
-      <p style={{ fontWeight: 'bold', marginTop: '1rem' }}>🏁 Match Status: {matchStatus}</p>
+      <p>🏁 <strong>Match Status:</strong> {matchStatus}</p>
     </div>
   );
 }
+
+export default App;
